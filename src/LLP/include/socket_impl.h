@@ -12,48 +12,101 @@
 ____________________________________________________________________________________________*/
 
 #pragma once
-#ifndef NEXUS_LLP_TEMPLATES_SOCKET_H
-#define NEXUS_LLP_TEMPLATES_SOCKET_H
+#ifndef NEXUS_LLP_INCLUDE_SOCKET_IMPL_H
+#define NEXUS_LLP_INCLUDE_SOCKET_IMPL_H
 
 
 #include <LLP/include/base_address.h>
+#include <LLP/templates/socket.h>
+
 
 #include <vector>
 #include <cstdint>
+#include <mutex>
+#include <atomic>
+
 #include <poll.h>
-
-
-typedef struct ssl_st SSL;
-typedef struct ssl_ctx_st SSL_CTX;
 
 namespace LLP
 {
-
-    /** Max send buffer size. **/
-    const uint64_t MAX_SEND_BUFFER = 3 * 1024 * 1024; //3MB max send buffer
-
-
     /** Socket
      *
      *  Base Template class to handle outgoing / incoming LLP data for both
      *  Client and Server.
      *
      **/
-    class Socket
+    class SocketImpl : public Socket
     {
+
+        /** Mutex for thread synchronization. **/
+        mutable std::mutex SOCKET_MUTEX;
+
+
+        /* SSL object */
+        SSL *pSSL;
+
+    protected:
+
+        /** Mutex to protect buffered data. **/
+        mutable std::mutex DATA_MUTEX;
+
+
+        /** Keep track of last time data was sent. **/
+        std::atomic<std::uint64_t> nLastSend;
+
+
+        /** Keep track of last time data was received. **/
+        std::atomic<std::uint64_t> nLastRecv;
+
+
+        /** The error codes for socket. **/
+        std::atomic<std::int32_t> nError;
+
+
+        /** Oversize buffer for large packets. **/
+        std::vector<std::uint8_t> vBuffer;
+
+
+        /** Flag to catch if buffer write failed. **/
+        std::atomic<bool> fBufferFull;
+
+
     public:
 
-        /** Timeout flags. **/
-        enum
-        {
-            READ  = (1 << 1),
-            WRITE = (1 << 2),
-            ALL   = (READ | WRITE)
-        };
+
+        /** Flag to detect consecutive errors. **/
+        std::atomic<std::uint32_t> nConsecutiveErrors;
+
+
+        /** The address of this connection. */
+        BaseAddress addr;
+
+
+        pollfd POLL;
+
+
+        /** The default constructor. **/
+        SocketImpl();
+
+
+        /** Copy constructor. **/
+        SocketImpl(const SocketImpl& socket);
+
+
+        /** The socket constructor. **/
+        SocketImpl(std::int32_t nSocketIn, const BaseAddress &addrIn, bool fSSL = false);
+
+
+        /** Constructor for socket
+         *
+         *  @param[in] addrConnect The address to connect socket to
+         *
+         **/
+        SocketImpl(const BaseAddress &addrConnect, bool fSSL = false);
 
 
         /** Destructor for socket **/
-        virtual ~Socket();
+        virtual ~SocketImpl();
 
 
         /** GetAddress
@@ -61,7 +114,7 @@ namespace LLP
          *  Returns the address of the socket.
          *
          **/
-        virtual BaseAddress GetAddress() const = 0;
+        BaseAddress GetAddress() const override;
 
 
         /** Reset
@@ -69,7 +122,7 @@ namespace LLP
         *  Resets the internal timers.
         *
         **/
-        virtual void Reset() = 0;
+        void Reset() override;
 
 
         /** Attempts
@@ -81,7 +134,7 @@ namespace LLP
          *  @return true if the socket is in a valid state.
          *
          **/
-        virtual bool Attempt(const BaseAddress &addrDest, std::uint32_t nTimeout = 3000) = 0;
+        bool Attempt(const BaseAddress &addrDest, std::uint32_t nTimeout = 3000) override;
 
 
         /** Available
@@ -91,7 +144,7 @@ namespace LLP
          *  @return the total bytes available for read
          *
          **/
-        virtual std::int32_t Available() const = 0;
+        std::int32_t Available() const override;
 
 
         /** Close
@@ -99,7 +152,7 @@ namespace LLP
          *  Clear resources associated with socket and return to invalid state.
          *
          **/
-        virtual void Close() = 0;
+        void Close() override;
 
 
         /** Read
@@ -112,7 +165,7 @@ namespace LLP
          *  @return the total bytes that were read
          *
          **/
-        virtual std::int32_t Read(std::vector<std::uint8_t>& vData, size_t nBytes) = 0;
+        std::int32_t Read(std::vector<std::uint8_t>& vData, size_t nBytes) override;
 
 
         /** Read
@@ -125,7 +178,7 @@ namespace LLP
          *  @return the total bytes that were read
          *
          **/
-        virtual std::int32_t Read(std::vector<std::int8_t>& vchData, size_t nBytes) = 0;
+        std::int32_t Read(std::vector<std::int8_t>& vchData, size_t nBytes) override;
 
 
         /** Write
@@ -138,7 +191,7 @@ namespace LLP
          *  @return the total bytes that were written
          *
          **/
-        virtual std::int32_t Write(const std::vector<std::uint8_t>& vData, size_t nBytes) = 0;
+        std::int32_t Write(const std::vector<std::uint8_t>& vData, size_t nBytes) override;
 
 
         /** Flush
@@ -148,7 +201,7 @@ namespace LLP
          *  @return the total bytes that were written
          *
          **/
-        virtual std::int32_t Flush() = 0;
+        std::int32_t Flush() override;
 
 
         /** Timeout
@@ -159,7 +212,7 @@ namespace LLP
         *  @param[in] nFlags Flags to determine if checking reading or writing timeouts.
         *
         **/
-        virtual bool Timeout(std::uint32_t nTime, std::uint8_t nFlags = ALL) const = 0;
+        bool Timeout(std::uint32_t nTime, std::uint8_t nFlags = ALL) const override;
 
 
         /** Buffered
@@ -167,7 +220,7 @@ namespace LLP
          *  Get the amount of data buffered.
          *
          **/
-        virtual std::uint64_t Buffered() const = 0;
+        std::uint64_t Buffered() const override; 
 
 
         /** IsNull
@@ -175,7 +228,7 @@ namespace LLP
          *  Checks if is in null state.
          *
          **/
-        virtual bool IsNull() const = 0;
+        bool IsNull() const override;
 
 
         /** Errors
@@ -183,7 +236,7 @@ namespace LLP
          *  Checks for any flags in the Error Handle.
          *
          **/
-        virtual bool Errors() const = 0;
+        bool Errors() const override;
 
 
         /** Error
@@ -191,7 +244,7 @@ namespace LLP
          *  Give the message (c-string) of the error in the socket.
          *
          **/
-        virtual const char* Error() const = 0;
+        const char* Error() const override;
 
 
         /** SetSSL
@@ -201,7 +254,7 @@ namespace LLP
          *  @param[in] fSSL_ The flag to set SSL on or off.
          *
          **/
-         virtual void SetSSL(bool fSSL) = 0;
+         void SetSSL(bool fSSL) override;
 
 
          /** IsSSL
@@ -209,7 +262,19 @@ namespace LLP
           * Determines if socket is using SSL encryption.
           *
           **/
-          virtual bool IsSSL() const = 0;
+          bool IsSSL() const override;
+
+
+    private:
+
+        /** error_code
+         *
+         *  Returns the error of socket if any
+         *
+         *  @return error code of the socket
+         *
+         **/
+        std::int32_t error_code() const;
 
     };
 

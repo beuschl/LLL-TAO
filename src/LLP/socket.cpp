@@ -16,7 +16,7 @@ ________________________________________________________________________________
 #include <stdio.h>
 
 #include <LLP/include/network.h>
-#include <LLP/templates/socket.h>
+#include <LLP/include/socket_impl.h>
 
 #include <Util/include/runtime.h>
 #include <Util/include/debug.h>
@@ -34,7 +34,7 @@ namespace LLP
 {
 
     /* The default constructor. */
-    Socket::Socket()
+    SocketImpl::SocketImpl()
     : SOCKET_MUTEX       ( )
     , pSSL(nullptr)
     , DATA_MUTEX         ( )
@@ -55,7 +55,7 @@ namespace LLP
 
 
     /* Copy constructor. */
-    Socket::Socket(const Socket& socket)
+    SocketImpl::SocketImpl(const SocketImpl& socket)
     : POLL               (socket.POLL)
     , SOCKET_MUTEX       ( )
     , pSSL(nullptr)
@@ -89,7 +89,7 @@ namespace LLP
 
 
     /** The socket constructor. **/
-    Socket::Socket(int32_t nSocketIn, const BaseAddress &addrIn, const bool& fSSL)
+    SocketImpl::SocketImpl(std::int32_t nSocketIn, const BaseAddress &addrIn, bool fSSL)
     : SOCKET_MUTEX       ( )
     , pSSL(nullptr)
     , DATA_MUTEX         ( )
@@ -205,7 +205,7 @@ namespace LLP
 
 
     /* Constructor for socket */
-    Socket::Socket(const BaseAddress &addrConnect, const bool& fSSL)
+    SocketImpl::SocketImpl(const BaseAddress &addrConnect, bool fSSL)
     : SOCKET_MUTEX       ( )
     , pSSL(nullptr)
     , DATA_MUTEX         ( )
@@ -232,7 +232,7 @@ namespace LLP
 
 
     /* Destructor for socket */
-    Socket::~Socket()
+    SocketImpl::~SocketImpl()
     {
         /* Free the ssl object. */
         SetSSL(false);
@@ -240,7 +240,7 @@ namespace LLP
 
 
     /* Returns the address of the socket. */
-    BaseAddress Socket::GetAddress() const
+    BaseAddress SocketImpl::GetAddress() const
     {
         LOCK(DATA_MUTEX);
 
@@ -249,7 +249,7 @@ namespace LLP
 
 
     /* Resets the internal timers. */
-    void Socket::Reset()
+    void SocketImpl::Reset()
     {
         /* Atomic data types, no need for lock */
         nLastRecv = runtime::timestamp(true);
@@ -261,7 +261,7 @@ namespace LLP
 
 
     /* Connects the socket to an external address */
-    bool Socket::Attempt(const BaseAddress &addrDest, uint32_t nTimeout)
+    bool SocketImpl::Attempt(const BaseAddress &addrDest, std::uint32_t nTimeout)
     {
         bool fConnected = false;
 
@@ -506,7 +506,7 @@ namespace LLP
 
 
     /* Poll the socket to check for available data */
-    int Socket::Available() const
+    std::int32_t SocketImpl::Available() const
     {
         LOCK(SOCKET_MUTEX);
 
@@ -528,7 +528,7 @@ namespace LLP
 
 
     /* Clear resources associated with socket and return to invalid state. */
-    void Socket::Close()
+    void SocketImpl::Close()
     {
         LOCK(SOCKET_MUTEX);
 
@@ -570,7 +570,7 @@ namespace LLP
 
 
     /* Read data from the socket buffer non-blocking */
-    int Socket::Read(std::vector<uint8_t> &vData, size_t nBytes)
+    int SocketImpl::Read(std::vector<std::uint8_t> &vData, size_t nBytes)
     {
         LOCK(SOCKET_MUTEX);
 
@@ -658,7 +658,7 @@ namespace LLP
 
 
     /* Read data from the socket buffer non-blocking */
-    int32_t Socket::Read(std::vector<int8_t> &vData, size_t nBytes)
+    std::int32_t SocketImpl::Read(std::vector<std::int8_t> &vData, size_t nBytes)
     {
         LOCK(SOCKET_MUTEX);
 
@@ -747,7 +747,7 @@ namespace LLP
 
 
     /* Write data into the socket buffer non-blocking */
-    int32_t Socket::Write(const std::vector<uint8_t>& vData, size_t nBytes)
+    std::int32_t SocketImpl::Write(const std::vector<std::uint8_t>& vData, size_t nBytes)
     {
         int32_t nSent = 0;
 
@@ -805,7 +805,7 @@ namespace LLP
 
 
     /* Flushes data out of the overflow buffer */
-    int Socket::Flush()
+    std::int32_t SocketImpl::Flush()
     {
         int32_t nSent   = 0;
         uint32_t nBytes = 0;
@@ -876,7 +876,7 @@ namespace LLP
 
 
     /*  Determines if nTime seconds have elapsed since last Read / Write. */
-    bool Socket::Timeout(const uint32_t nTime, const uint8_t nFlags) const
+    bool SocketImpl::Timeout(std::uint32_t nTime, std::uint8_t nFlags) const
     {
         /* Check for write flags. */
         bool fRet = true;
@@ -892,21 +892,21 @@ namespace LLP
 
 
     /* Check that the socket has data that is buffered. */
-    uint64_t Socket::Buffered() const
+    std::uint64_t SocketImpl::Buffered() const
     {
         return vBuffer.size();
     }
 
 
     /*  Checks if is in null state. */
-    bool Socket::IsNull() const
+    bool SocketImpl::IsNull() const
     {
         return POLL.fd == -1;
     }
 
 
     /*  Checks for any flags in the Error Handle. */
-    bool Socket::Errors() const
+    bool SocketImpl::Errors() const
     {
         LOCK(DATA_MUTEX);
 
@@ -915,7 +915,7 @@ namespace LLP
 
 
     /*  Give the message (c-string) of the error in the socket. */
-    const char *Socket::Error() const
+    const char *SocketImpl::Error() const
     {
         LOCK(DATA_MUTEX);
 
@@ -927,7 +927,7 @@ namespace LLP
 
 
     /* Returns the error of socket if any */
-    int Socket::error_code() const
+    int SocketImpl::error_code() const
     {
 
         if(pSSL)
@@ -948,7 +948,7 @@ namespace LLP
     }
 
     /*  Creates or destroys the SSL object depending on the flag set. */
-    void Socket::SetSSL(bool fSSL)
+    void SocketImpl::SetSSL(bool fSSL)
     {
         LOCK(DATA_MUTEX);
 
@@ -965,7 +965,7 @@ namespace LLP
 
 
     /* Determines if socket is using SSL encryption. */
-    bool Socket::IsSSL() const
+    bool SocketImpl::IsSSL() const
     {
         LOCK(DATA_MUTEX);
 
