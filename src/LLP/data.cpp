@@ -159,7 +159,7 @@ namespace LLP
                     }
 
                     /* Set the correct file descriptor. */
-                    POLLFDS.at(nIndex).fd = CONNECTIONS->at(nIndex)->fd;
+                    POLLFDS.at(nIndex).fd = CONNECTIONS->at(nIndex)->POLL.fd;
                 }
                 catch(const std::exception& e)
                 {

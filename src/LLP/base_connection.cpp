@@ -140,7 +140,7 @@ namespace LLP
     template <class PacketType>
     void BaseConnection<PacketType>::SetNull()
     {
-        fd              = -1;
+        POLL.fd         = -1;
         nError          = 0;
         DDOS            = nullptr;
         FLUSH_CONDITION = nullptr;

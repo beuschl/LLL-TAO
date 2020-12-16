@@ -23,6 +23,8 @@ ________________________________________________________________________________
 #include <mutex>
 #include <atomic>
 
+#include <poll.h>
+
 
 typedef struct ssl_st SSL;
 typedef struct ssl_ctx_st SSL_CTX;
@@ -40,7 +42,7 @@ namespace LLP
      *  Client and Server.
      *
      **/
-    class Socket : public pollfd
+    class Socket
     {
 
         /** Mutex for thread synchronization. **/
@@ -94,6 +96,10 @@ namespace LLP
 
         /** The address of this connection. */
         BaseAddress addr;
+
+
+        pollfd POLL;
+
 
 
         /** The default constructor. **/

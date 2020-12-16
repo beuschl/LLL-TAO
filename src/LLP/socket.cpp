@@ -35,8 +35,7 @@ namespace LLP
 
     /* The default constructor. */
     Socket::Socket()
-    : pollfd             ( )
-    , SOCKET_MUTEX       ( )
+    : SOCKET_MUTEX       ( )
     , pSSL(nullptr)
     , DATA_MUTEX         ( )
     , nLastSend          (0)
@@ -47,8 +46,8 @@ namespace LLP
     , nConsecutiveErrors (0)
     , addr               ( )
     {
-        fd = INVALID_SOCKET;
-        events = POLLIN;
+        POLL.fd = INVALID_SOCKET;
+        POLL.events = POLLIN;
 
         /* Reset the internal timers. */
         Reset();
@@ -57,7 +56,7 @@ namespace LLP
 
     /* Copy constructor. */
     Socket::Socket(const Socket& socket)
-    : pollfd             (socket)
+    : POLL               (socket.POLL)
     , SOCKET_MUTEX       ( )
     , pSSL(nullptr)
     , DATA_MUTEX         ( )
@@ -83,7 +82,7 @@ namespace LLP
             #endif
 
             /* Set the socket file descriptor on the SSL object to this socket */
-            SSL_set_fd(pSSL, fd);
+            SSL_set_fd(pSSL, POLL.fd);
         }
 
     }
@@ -91,8 +90,7 @@ namespace LLP
 
     /** The socket constructor. **/
     Socket::Socket(int32_t nSocketIn, const BaseAddress &addrIn, const bool& fSSL)
-    : pollfd             ( )
-    , SOCKET_MUTEX       ( )
+    : SOCKET_MUTEX       ( )
     , pSSL(nullptr)
     , DATA_MUTEX         ( )
     , nLastSend          (0)
@@ -103,8 +101,8 @@ namespace LLP
     , nConsecutiveErrors (0)
     , addr               (addrIn)
     {
-        fd = nSocketIn;
-        events = POLLIN;
+        POLL.fd = nSocketIn;
+        POLL.events = POLLIN;
 
         /* Determine if socket should use SSL. */
         SetSSL(fSSL);
@@ -112,7 +110,7 @@ namespace LLP
         /* TCP connection is ready. Do server side SSL. */
         if(fSSL)
         {
-            SSL_set_fd(pSSL, fd);
+            SSL_set_fd(pSSL, POLL.fd);
             SSL_set_accept_state(pSSL);
 
             int32_t nStatus = -1;
@@ -139,11 +137,11 @@ namespace LLP
                 switch(nError.load())
                 {
                 case SSL_ERROR_WANT_READ:
-                    FD_SET(fd, &fdReadSet);
+                    FD_SET(POLL.fd, &fdReadSet);
                     nStatus = 1; // Wait for more activity
                     break;
                 case SSL_ERROR_WANT_WRITE:
-                    FD_SET(fd, &fdWriteSet);
+                    FD_SET(POLL.fd, &fdWriteSet);
                     nStatus = 1; // Wait for more activity
                     break;
                 case SSL_ERROR_NONE:
@@ -167,7 +165,7 @@ namespace LLP
                 if (nStatus == 1)
                 {
                     // Must have at least one handle to wait for at this point.
-                    nStatus = select(fd + 1, &fdReadSet, &fdWriteSet, NULL, &tv);
+                    nStatus = select(POLL.fd + 1, &fdReadSet, &fdWriteSet, NULL, &tv);
 
                     // 0 is timeout, so we're done.
                     // -1 is error, so we're done.
@@ -208,8 +206,7 @@ namespace LLP
 
     /* Constructor for socket */
     Socket::Socket(const BaseAddress &addrConnect, const bool& fSSL)
-    : pollfd             ( )
-    , SOCKET_MUTEX       ( )
+    : SOCKET_MUTEX       ( )
     , pSSL(nullptr)
     , DATA_MUTEX         ( )
     , nLastSend          (0)
@@ -220,8 +217,8 @@ namespace LLP
     , nConsecutiveErrors (0)
     , addr               ( )
     {
-        fd = INVALID_SOCKET;
-        events = POLLIN;
+        POLL.fd = INVALID_SOCKET;
+        POLL.events = POLLIN;
 
         /* Reset the internal timers. */
         Reset();
@@ -273,27 +270,27 @@ namespace LLP
             LOCK(DATA_MUTEX);
 
             if(addrDest.IsIPv4())
-                fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+                POLL.fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
             else
-                fd = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
+                POLL.fd = socket(AF_INET6, SOCK_STREAM, IPPROTO_TCP);
 
             /* Catch failure if socket couldn't be initialized. */
-            if (fd == INVALID_SOCKET)
+            if (POLL.fd == INVALID_SOCKET)
                 return false;
         }
 
         /* Set the socket to non blocking. */
     #ifdef WIN32
         long unsigned int nonBlocking = 1; //any non-zero is nonblocking
-        ioctlsocket(fd, FIONBIO, &nonBlocking);
+        ioctlsocket(POLL.fd, FIONBIO, &nonBlocking);
     #else
-        fcntl(fd, F_SETFL, O_NONBLOCK);
+        fcntl(POLL.fd, F_SETFL, O_NONBLOCK);
     #endif
 
 #ifndef WIN32
         /* Set the MSS to a lower than default value to support the increased bytes required for LISP */
         int nMaxSeg = 1300;
-        if(setsockopt(fd, IPPROTO_TCP, TCP_MAXSEG, &nMaxSeg, sizeof(nMaxSeg)) == SOCKET_ERROR)
+        if(setsockopt(POLL.fd, IPPROTO_TCP, TCP_MAXSEG, &nMaxSeg, sizeof(nMaxSeg)) == SOCKET_ERROR)
         { //TODO: this fails on OSX systems. Need to find out why
             //debug::error("setsockopt() MSS for connection failed: ", WSAGetLastError());
             //closesocket(nFile);
@@ -321,7 +318,7 @@ namespace LLP
              * If it doesn't return that, it means it connected immediately and connection was successful. (very unusual, but possible)
              */
             LOCK(SOCKET_MUTEX);
-            fConnected = (connect(fd, (struct sockaddr*)&sockaddr, sizeof(sockaddr)) == SOCKET_ERROR);
+            fConnected = (connect(POLL.fd, (struct sockaddr*)&sockaddr, sizeof(sockaddr)) == SOCKET_ERROR);
         }
         else
         {
@@ -336,7 +333,7 @@ namespace LLP
             }
 
             LOCK(SOCKET_MUTEX);
-            fConnected = (connect(fd, (struct sockaddr*)&sockaddr, sizeof(sockaddr)) == SOCKET_ERROR);
+            fConnected = (connect(POLL.fd, (struct sockaddr*)&sockaddr, sizeof(sockaddr)) == SOCKET_ERROR);
         }
 
         /* Handle final socket checks if connection established with no errors. */
@@ -349,9 +346,9 @@ namespace LLP
             if(nError == WSAEWOULDBLOCK || nError == WSAEALREADY || nError == WSAEINPROGRESS)
             {
                 /* Setup poll objects. */
-                pollfd fds[1];
-                fds[0].events = POLLOUT;
-                fds[0].fd     = fd;
+                pollfd fd;
+                fd.events = POLLOUT;
+                fd.fd     = POLL.fd;
 
                 /* Get the total sleeps to cycle. */
                 uint32_t nIterators = (nTimeout / 100) - 1;
@@ -362,9 +359,9 @@ namespace LLP
                 for(uint32_t nSeconds = 0; nSeconds < nIterators && !config::fShutdown.load() && nPoll <= 0; ++nSeconds)
                 {
 #ifdef WIN32
-                    nPoll = WSAPoll(&fds[0], 1, 100);
+                    nPoll = WSAPoll(&fd, 1, 100);
 #else
-                    nPoll = poll(&fds[0], 1, 100);
+                    nPoll = poll(&fd, 1, 100);
 #endif
 
                     /* Check poll for errors. */
@@ -381,7 +378,7 @@ namespace LLP
                     fConnected = false;
                     debug::log(3, FUNCTION, "poll timeout ", addrDest.ToString(), " (", nError, ")");
                 }
-                else if((fds[0].revents & POLLERR) || (fds[0].revents & POLLHUP))
+                else if((fd.revents & POLLERR) || (fd.revents & POLLHUP))
                 {
                     fConnected = false;
                     debug::log(3, FUNCTION, "Connection failed ", addrDest.ToString());
@@ -405,7 +402,7 @@ namespace LLP
             }
             
             /* Attempt to close the socket our side to clean up resources */
-            closesocket(fd);
+            closesocket(POLL.fd);
 
             return false;
         }
@@ -413,7 +410,7 @@ namespace LLP
         else if(fConnected && pSSL)
         {
             /* Set up the SSL object for connecting */
-            SSL_set_fd(pSSL, fd);
+            SSL_set_fd(pSSL, POLL.fd);
             SSL_set_connect_state(pSSL);
 
             int32_t nStatus = -1;
@@ -434,11 +431,11 @@ namespace LLP
                 switch (SSL_get_error(pSSL, nStatus))
                 {
                 case SSL_ERROR_WANT_READ:
-                    FD_SET(fd, &fdReadSet);
+                    FD_SET(POLL.fd, &fdReadSet);
                     nStatus = 1; // Wait for more activity
                     break;
                 case SSL_ERROR_WANT_WRITE:
-                    FD_SET(fd, &fdWriteSet);
+                    FD_SET(POLL.fd, &fdWriteSet);
                     nStatus = 1; // Wait for more activity
                     break;
                 case SSL_ERROR_NONE:
@@ -462,7 +459,7 @@ namespace LLP
                 if (nStatus == 1)
                 {
                     // Must have at least one handle to wait for at this point.
-                    nStatus = select(fd + 1, &fdReadSet, &fdWriteSet, NULL, &tv);
+                    nStatus = select(POLL.fd + 1, &fdReadSet, &fdWriteSet, NULL, &tv);
 
                     // 0 is timeout, so we're done.
                     // -1 is error, so we're done.
@@ -494,7 +491,7 @@ namespace LLP
                     debug::log(3, FUNCTION, "SSL Accept failed ",  addr.ToString());
 
                 /* Attempt to close the socket our side to clean up resources */
-                closesocket(fd);
+                closesocket(POLL.fd);
                 
                 return false;
             }
@@ -516,10 +513,10 @@ namespace LLP
     
     #ifdef WIN32
         long unsigned int nAvailable = 0;
-        ioctlsocket(fd, FIONREAD, &nAvailable);
+        ioctlsocket(poll.fd, FIONREAD, &nAvailable);
     #else
         uint32_t nAvailable = 0;
-        ioctl(fd, FIONREAD, &nAvailable);
+        ioctl(POLL.fd, FIONREAD, &nAvailable);
     #endif
 
         /* If using SSL we must also include any bytes in the pending buffer that were not read in the last call to SSL_read . */
@@ -535,7 +532,7 @@ namespace LLP
     {
         LOCK(SOCKET_MUTEX);
 
-        if(fd != INVALID_SOCKET)
+        if(POLL.fd != INVALID_SOCKET)
         {
             if(IsSSL())
             {
@@ -543,18 +540,18 @@ namespace LLP
                    check this, then SSL_shutdown throws an exception when writing to the FD.  The easiest way to check that the
                    non-blocking socket is still connected is to poll it and check for POLLERR / POLLHUP errors */
                 
-                pollfd fds[1];
-                fds[0].events = POLLIN;
-                fds[0].fd = fd;
+                pollfd fd;
+                fd.events = POLLIN;
+                fd.fd = POLL.fd;
 
                 /* Poll the socket with 100ms timeout. */
 #ifdef WIN32
-                WSAPoll(&fds[0], 1, 100);
+                WSAPoll(&fd, 1, 100);
 #else
-                poll(&fds[0], 1, 100);
+                poll(&fd, 1, 100);
 #endif
                 /* Check for errors to be certain the socket is still connected */
-                if(!(fds[0].revents & POLLERR || fds[0].revents & POLLHUP) )
+                if(!(fd.revents & POLLERR || fd.revents & POLLHUP) )
                     /* Shut down a TLS/SSL connection by sending the "close notify" shutdown alert to the peer. */
                     SSL_shutdown(pSSL);
                 
@@ -563,10 +560,10 @@ namespace LLP
                 pSSL = nullptr;
             }
 
-            closesocket(fd);
+            closesocket(POLL.fd);
         }
 
-        fd = INVALID_SOCKET;
+        POLL.fd = INVALID_SOCKET;
 
         
     }
@@ -587,9 +584,9 @@ namespace LLP
         else
         {
         #ifdef WIN32
-            nRead = static_cast<int32_t>(recv(fd, (char*)&vData[0], nBytes, MSG_DONTWAIT));
+            nRead = static_cast<int32_t>(recv(POLL.fd, (char*)&vData[0], nBytes, MSG_DONTWAIT));
         #else
-            nRead = static_cast<int32_t>(recv(fd, (int8_t*)&vData[0], nBytes, MSG_DONTWAIT));
+            nRead = static_cast<int32_t>(recv(POLL.fd, (int8_t*)&vData[0], nBytes, MSG_DONTWAIT));
         #endif
         }
 
@@ -675,9 +672,9 @@ namespace LLP
         else
         {
         #ifdef WIN32
-            nRead = static_cast<int32_t>(recv(fd, (char*)&vData[0], nBytes, MSG_DONTWAIT));
+            nRead = static_cast<int32_t>(recv(POLL.fd, (char*)&vData[0], nBytes, MSG_DONTWAIT));
         #else
-            nRead = static_cast<int32_t>(recv(fd, (int8_t*)&vData[0], nBytes, MSG_DONTWAIT));
+            nRead = static_cast<int32_t>(recv(POLL.fd, (int8_t*)&vData[0], nBytes, MSG_DONTWAIT));
         #endif
         }
 
@@ -777,9 +774,9 @@ namespace LLP
             else
             {
             #ifdef WIN32
-                nSent = static_cast<int32_t>(send(fd, (char*)&vData[0], nBytes, MSG_NOSIGNAL | MSG_DONTWAIT));
+                nSent = static_cast<int32_t>(send(POLL.fd, (char*)&vData[0], nBytes, MSG_NOSIGNAL | MSG_DONTWAIT));
             #else
-                nSent = static_cast<int32_t>(send(fd, (int8_t*)&vData[0], nBytes, MSG_NOSIGNAL | MSG_DONTWAIT));
+                nSent = static_cast<int32_t>(send(POLL.fd, (int8_t*)&vData[0], nBytes, MSG_NOSIGNAL | MSG_DONTWAIT));
             #endif
             }
         }
@@ -839,9 +836,9 @@ namespace LLP
             else
             {
             #ifdef WIN32
-                nSent = static_cast<int32_t>(send(fd, (char*)&vBuffer[0], nBytes, MSG_NOSIGNAL | MSG_DONTWAIT));
+                nSent = static_cast<int32_t>(send(POLL.fd, (char*)&vBuffer[0], nBytes, MSG_NOSIGNAL | MSG_DONTWAIT));
             #else
-                nSent = static_cast<int32_t>(send(fd, (int8_t*)&vBuffer[0], nBytes, MSG_NOSIGNAL | MSG_DONTWAIT));
+                nSent = static_cast<int32_t>(send(POLL.fd, (int8_t*)&vBuffer[0], nBytes, MSG_NOSIGNAL | MSG_DONTWAIT));
             #endif
             }
 
@@ -904,7 +901,7 @@ namespace LLP
     /*  Checks if is in null state. */
     bool Socket::IsNull() const
     {
-        return fd == -1;
+        return POLL.fd == -1;
     }
 
 
